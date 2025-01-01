@@ -1,6 +1,10 @@
 #include "icb_gui.h"
-#include <cstdlib> // random sayı için gerekli
-#include <ctime>   //random sayıların değişkenliği için
+#include <cstdlib>
+#include <ctime>
+#include <queue>
+#include <vector>
+#include <tuple>
+#include <cstdio>
 
 ICBYTES gameBoard, panel;
 int FRM1, BTN;
@@ -22,63 +26,117 @@ int grid[10][10] = {
 
 bool food[10][10];
 
-void InitializeFood() {
-    srand(static_cast<unsigned>(time(0))); //yemlerin rastgele yerlerde bulunması için klendi
+struct Node {
+    int x, y, cost;
+    bool operator>(const Node& other) const {
+        return cost > other.cost;
+    }
+};
 
+void InitializeFood() {
+    srand(static_cast<unsigned>(time(0)));
     for (int i = 0; i < 10; i++) {
         for (int j = 0; j < 10; j++) {
-            if (grid[i][j] == 0) { // Sadece boşluklara yem yerleştir
-                food[i][j] = (rand() % 2 == 0); // Yem var mı yok mu rastgele belirle %50 olasılık var
-            }
-            else {
+            if (grid[i][j] == 0) {
+                food[i][j] = (rand() % 2 == 0);
+            } else {
                 food[i][j] = false;
             }
         }
     }
 }
 
-void ICGUI_Create() {
-    ICG_MWTitle("PacmanAI");
-    ICG_MWSize(500, 400);
-    ICG_SetFont(30, 12, "");
+// Uniform Cost Search: Hayaletin en kısa yolu bulması için
+std::vector<std::pair<int, int>> UniformCostSearch(int startX, int startY, int targetX, int targetY) {
+    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
+    bool visited[10][10] = {false};
+    std::pair<int, int> parent[10][10];
+
+    pq.push({startX, startY, 0});
+    parent[startX][startY] = {-1, -1};
+
+    int directions[4][2] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
+
+    while (!pq.empty()) {
+        Node current = pq.top();
+        pq.pop();
+
+        int cx = current.x, cy = current.y;
+
+        if (visited[cx][cy]) continue;
+        visited[cx][cy] = true;
+
+        // Hedefe ulaşıldı mı?
+        if (cx == targetX && cy == targetY) {
+            std::vector<std::pair<int, int>> path;
+            while (cx != -1 && cy != -1) {
+                path.push_back({cx, cy});
+                std::tie(cx, cy) = parent[cx][cy];
+            }
+            std::reverse(path.begin(), path.end());
+            return path;
+        }
+
+        // 4 yöne hareket
+        for (auto& dir : directions) {
+            int nx = cx + dir[0];
+            int ny = cy + dir[1];
+
+            // Sınır kontrolü ve geçilebilirlik
+            if (nx >= 0 && nx < 10 && ny >= 0 && ny < 10 && grid[nx][ny] == 0 && !visited[nx][ny]) {
+                pq.push({nx, ny, current.cost + 1});
+                parent[nx][ny] = {cx, cy};
+            }
+        }
+    }
+
+    return {}; // Hedefe ulaşılmazsa boş bir yol döner
 }
 
+// Hayaletin Hareketi
+void GhostMove() {
+    auto path = UniformCostSearch(ghostX, ghostY, pacmanX, pacmanY);
+    if (!path.empty() && path.size() > 1) {
+        ghostX = path[1].first;
+        ghostY = path[1].second;
+    }
+}
+
+// Oyun alanının çizimi
 void DrawGame() {
     CreateImage(gameBoard, 300, 300, ICB_UINT);
     FillRect(gameBoard, 0, 0, 300, 300, 0x000000);
 
+    // Duvarlar
     for (int i = 0; i < 10; i++) {
         for (int j = 0; j < 10; j++) {
             int x = j * 30;
             int y = i * 30;
             if (grid[i][j] == 1) {
-                FillRect(gameBoard, x, y, 30, 30, 0x8B4513); // Duvarlar
+                FillRect(gameBoard, x, y, 30, 30, 0x8B4513);
             }
         }
     }
+
+    // Yemler
     for (int i = 0; i < 10; i++) {
         for (int j = 0; j < 10; j++) {
             if (food[i][j]) {
                 int x = j * 30 + 15;
                 int y = i * 30 + 15;
-                FillCircle(gameBoard, x, y, 3, 0x00ff00); // Yemlerin çizimi
+                FillCircle(gameBoard, x, y, 3, 0x00ff00);
             }
         }
     }
 
-    //pacmanin çizimi
+    // Pacman ve hayalet
     FillCircle(gameBoard, pacmanX * 30 + 15, pacmanY * 30 + 15, 9, 0xffff00);
-
-    //hayaletin çizimi
     FillCircle(gameBoard, ghostX * 30 + 15, ghostY * 30 + 15, 7, 0xff0000);
 
     DisplayImage(FRM1, gameBoard);
 }
 
-void GhostMove() {
-    // AI ile hayaletin hareketi buraya gelecek
-}
-
+// Pacman'in Hareketi
 void PacmanMove(void* lpParam) {
     while (1) {
         int key = ICG_LastKeyPressed();
@@ -95,19 +153,24 @@ void PacmanMove(void* lpParam) {
             pacmanY = nextY;
         }
         if (food[pacmanY][pacmanX]) {
-            food[pacmanY][pacmanX] = false; // Yem yenildiğinde false yapılır
+            food[pacmanY][pacmanX] = false;
         }
 
         GhostMove();
         DrawGame();
 
         if (pacmanX == ghostX && pacmanY == ghostY) {
-            // Oyun bitti mesajı ekle bitir
             exit(0);
         }
 
         Sleep(200);
     }
+}
+
+void ICGUI_Create() {
+    ICG_MWTitle("PacmanAI");
+    ICG_MWSize(500, 400);
+    ICG_SetFont(30, 12, "");
 }
 
 void ICGUI_main() {
