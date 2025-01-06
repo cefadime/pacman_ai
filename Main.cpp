@@ -6,9 +6,10 @@
 #include <tuple>
 #include <cstdio>
 
-ICBYTES gameBoard, panel, score;
+ICBYTES gameBoard, panel;
+int score = 0;
 int FRM1, BTN, MLE;
-int pacmanX = 4, pacmanY = 4;
+int pacmanX = 4, pacmanY = 4; 
 int ghostX = 1, ghostY = 1;
 
 int grid[10][10] = {
@@ -165,8 +166,9 @@ void PacmanMove(void* lpParam) {
         DrawGame();
 
         if (pacmanX == ghostX && pacmanY == ghostY) {
+            ICG_printf(MLE, "%d", score); //total puan yazılır
+
             while (1) {
-                Print(MLE, score); // Puanı yazdırmak için ama bu da çalışmadı
                 // Kullanıcı kapatana kadar bekler
                 Sleep(200);
             }
@@ -188,9 +190,7 @@ void ICGUI_main() {
     BTN = ICG_TButton(335, 50, 100, 50, "START", PacmanMove, NULL);
     ICG_Static(335, 110, 100, 55, "SCORE");
     MLE = ICG_MLEditSunken(335, 150, 100, 50, "", SCROLLBAR_V);
-    ICG_printf(MLE, "%s\n", score);
-
-    //Burda skor mle içine yazılacak ama şuan çalışmıyor.
+    ICG_printf(MLE, "%d", score); //başlangıç olarak 0 yazar
 
     DrawGame();
 }
