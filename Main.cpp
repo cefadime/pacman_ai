@@ -6,10 +6,11 @@
 #include <tuple>
 #include <cstdio>
 
-ICBYTES gameBoard, panel;
-int FRM1, BTN;
+ICBYTES gameBoard, panel, score;
+int FRM1, BTN, MLE;
 int pacmanX = 4, pacmanY = 4;
 int ghostX = 1, ghostY = 1;
+void ScoreFunct();
 
 int grid[10][10] = {
     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -39,7 +40,8 @@ void InitializeFood() {
         for (int j = 0; j < 10; j++) {
             if (grid[i][j] == 0) {
                 food[i][j] = (rand() % 2 == 0);
-            } else {
+            }
+            else {
                 food[i][j] = false;
             }
         }
@@ -49,13 +51,13 @@ void InitializeFood() {
 // Uniform Cost Search: Hayaletin en kısa yolu bulması için
 std::vector<std::pair<int, int>> UniformCostSearch(int startX, int startY, int targetX, int targetY) {
     std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
-    bool visited[10][10] = {false};
+    bool visited[10][10] = { false };
     std::pair<int, int> parent[10][10];
 
-    pq.push({startX, startY, 0});
-    parent[startX][startY] = {-1, -1};
+    pq.push({ startX, startY, 0 });
+    parent[startX][startY] = { -1, -1 };
 
-    int directions[4][2] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}};
+    int directions[4][2] = { {0, 1}, {1, 0}, {0, -1}, {-1, 0} };
 
     while (!pq.empty()) {
         Node current = pq.top();
@@ -70,7 +72,7 @@ std::vector<std::pair<int, int>> UniformCostSearch(int startX, int startY, int t
         if (cx == targetX && cy == targetY) {
             std::vector<std::pair<int, int>> path;
             while (cx != -1 && cy != -1) {
-                path.push_back({cx, cy});
+                path.push_back({ cx, cy });
                 std::tie(cx, cy) = parent[cx][cy];
             }
             std::reverse(path.begin(), path.end());
@@ -84,8 +86,8 @@ std::vector<std::pair<int, int>> UniformCostSearch(int startX, int startY, int t
 
             // Sınır kontrolü ve geçilebilirlik
             if (nx >= 0 && nx < 10 && ny >= 0 && ny < 10 && grid[nx][ny] == 0 && !visited[nx][ny]) {
-                pq.push({nx, ny, current.cost + 1});
-                parent[nx][ny] = {cx, cy};
+                pq.push({ nx, ny, current.cost + 1 });
+                parent[nx][ny] = { cx, cy };
             }
         }
     }
@@ -151,16 +153,24 @@ void PacmanMove(void* lpParam) {
         if (nextX >= 0 && nextX < 10 && nextY >= 0 && nextY < 10 && grid[nextY][nextX] == 0) {
             pacmanX = nextX;
             pacmanY = nextY;
+            score -= 1; // Her adımda -1 puan ekler
+
         }
         if (food[pacmanY][pacmanX]) {
             food[pacmanY][pacmanX] = false;
+            score += 5; // Yem yendiğinde 5 puan ekler
+
         }
 
         GhostMove();
         DrawGame();
 
         if (pacmanX == ghostX && pacmanY == ghostY) {
-            exit(0);
+            while (1) {
+                Print(MLE, score); // Puanı yazdırmak için ama bu da çalışmadı
+                // Kullanıcı kapatana kadar bekler
+                Sleep(200);
+            }
         }
 
         Sleep(200);
@@ -177,6 +187,12 @@ void ICGUI_main() {
     InitializeFood();
     FRM1 = ICG_FrameMedium(20, 20, 300, 300);
     BTN = ICG_TButton(335, 50, 100, 50, "START", PacmanMove, NULL);
+    ICG_Static(335, 110, 100, 55, "SCORE");
+    MLE = ICG_MLEditSunken(335, 150, 100, 50, "", SCROLLBAR_V);
+    ICG_printf(MLE, "%s\n", score);
+
+    //Burda skor mle içine yazılacak ama şuan çalışmıyor.
+
     DrawGame();
 }
 
