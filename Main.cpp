@@ -10,7 +10,6 @@ ICBYTES gameBoard, panel, score;
 int FRM1, BTN, MLE;
 int pacmanX = 4, pacmanY = 4;
 int ghostX = 1, ghostY = 1;
-void ScoreFunct();
 
 int grid[10][10] = {
     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
