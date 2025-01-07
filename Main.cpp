@@ -4,13 +4,14 @@
 #include <queue>
 #include <vector>
 #include <tuple>
-#include <cstdio>
+#include <cmath>
 
 ICBYTES gameBoard, panel;
 int score = 0;
 int FRM1, BTN, MLE;
-int pacmanX = 4, pacmanY = 4; 
+int pacmanX = 4, pacmanY = 4;
 int ghostX = 1, ghostY = 1;
+bool gameOver = false;
 
 int grid[10][10] = {
     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -27,13 +28,21 @@ int grid[10][10] = {
 
 bool food[10][10];
 
+void GhostMove();
+void DrawGame();
+void ICGUI_Create();
+void ICGUI_main();
+
+// Node yapısı
 struct Node {
-    int x, y, cost;
-    bool operator>(const Node& other) const {
-        return cost > other.cost;
+    int x, y, g, h, f, cost;
+    Node* parent;
+    bool operator<(const Node& other) const {
+        return f > other.f;
     }
 };
 
+// Yem ve Çarpışma Fonksiyonları
 void InitializeFood() {
     srand(static_cast<unsigned>(time(0)));
     for (int i = 0; i < 10; i++) {
@@ -47,64 +56,120 @@ void InitializeFood() {
         }
     }
 }
+void InitializeGhost() {
+    srand(static_cast<unsigned>(time(0))); // Rastgelelik için seed
+    while (true) {
+        ghostX = rand() % 10;
+        ghostY = rand() % 10; 
 
-// Uniform Cost Search: Hayaletin en kısa yolu bulması için
-std::vector<std::pair<int, int>> UniformCostSearch(int startX, int startY, int targetX, int targetY) {
-    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
-    bool visited[10][10] = { false };
-    std::pair<int, int> parent[10][10];
+        if (grid[ghostY][ghostX] == 0 && !(ghostX == pacmanX && ghostY == pacmanY)) {
+            break; // Eğer geçerli bir pozisyonsa döngüden çık
+        }
+    }
+    ICG_printf(MLE, "Ghost initialized at (%d, %d)", ghostX, ghostY); // Debug için
+}
 
-    pq.push({ startX, startY, 0 });
-    parent[startX][startY] = { -1, -1 };
+// A* Algoritması ile Yemlere Ulaşım
+int CalculateHCost(int x1, int y1, int x2, int y2) {
+    return std::abs(x1 - x2) + std::abs(y1 - y2);
+}
+
+std::vector<Node> AStarSearch(int startX, int startY, int targetX, int targetY) {
+    std::priority_queue<Node> openList;
+    bool closedList[10][10] = { false };
+
+    Node start = { startX, startY, 0, CalculateHCost(startX, startY, targetX, targetY), 0, 0, nullptr };
+    start.f = start.g + start.h;
+    openList.push(start);
 
     int directions[4][2] = { {0, 1}, {1, 0}, {0, -1}, {-1, 0} };
 
-    while (!pq.empty()) {
-        Node current = pq.top();
-        pq.pop();
+    while (!openList.empty()) {
+        Node current = openList.top();
+        openList.pop();
 
-        int cx = current.x, cy = current.y;
+        if (current.x == targetX && current.y == targetY) {
+            std::vector<Node> path;
+            Node* pathNode = &current;
 
-        if (visited[cx][cy]) continue;
-        visited[cx][cy] = true;
-
-        // Hedefe ulaşıldı mı?
-        if (cx == targetX && cy == targetY) {
-            std::vector<std::pair<int, int>> path;
-            while (cx != -1 && cy != -1) {
-                path.push_back({ cx, cy });
-                std::tie(cx, cy) = parent[cx][cy];
+            while (pathNode) {
+                path.push_back(*pathNode);
+                pathNode = pathNode->parent;
             }
+
             std::reverse(path.begin(), path.end());
             return path;
         }
 
-        // 4 yöne hareket
-        for (auto& dir : directions) {
-            int nx = cx + dir[0];
-            int ny = cy + dir[1];
+        closedList[current.x][current.y] = true;
 
-            // Sınır kontrolü ve geçilebilirlik
-            if (nx >= 0 && nx < 10 && ny >= 0 && ny < 10 && grid[nx][ny] == 0 && !visited[nx][ny]) {
-                pq.push({ nx, ny, current.cost + 1 });
-                parent[nx][ny] = { cx, cy };
+        for (auto& dir : directions) {
+            int nx = current.x + dir[0];
+            int ny = current.y + dir[1];
+
+            if (nx >= 0 && ny >= 0 && nx < 10 && ny < 10 && grid[ny][nx] == 0 && !closedList[nx][ny]) {
+                Node neighbor = { nx, ny, current.g + 1, CalculateHCost(nx, ny, targetX, targetY), 0, current.g + 1, new Node(current) };
+                neighbor.f = neighbor.g + neighbor.h;
+                openList.push(neighbor);
             }
         }
     }
 
-    return {}; // Hedefe ulaşılmazsa boş bir yol döner
+    return {};
 }
 
-// Hayaletin Hareketi
-void GhostMove() {
-    auto path = UniformCostSearch(ghostX, ghostY, pacmanX, pacmanY);
-    if (!path.empty() && path.size() > 1) {
-        ghostX = path[1].first;
-        ghostY = path[1].second;
+// Pacman'ın A* ile Hareketi
+void PacmanMove(void* lpParam) {
+    while (!gameOver) {
+        int closestFoodX = -1, closestFoodY = -1, minDistance = INT_MAX;
+
+        for (int i = 0; i < 10; i++) {
+            for (int j = 0; j < 10; j++) {
+                if (food[i][j]) {
+                    int distance = CalculateHCost(pacmanX, pacmanY, j, i);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestFoodX = j;
+                        closestFoodY = i;
+                    }
+                }
+            }
+        }
+
+        if (closestFoodX == -1 || closestFoodY == -1) break;
+
+        auto path = AStarSearch(pacmanX, pacmanY, closestFoodX, closestFoodY);
+
+        for (auto& step : path) {
+            pacmanX = step.x;
+            pacmanY = step.y;
+
+            if (food[pacmanY][pacmanX]) {
+                food[pacmanY][pacmanX] = false;
+                score += 5;
+            }
+
+            if (pacmanX == ghostX && pacmanY == ghostY) {
+                gameOver = true;
+                ICG_printf(MLE, "GAME OVER! SCORE: %d", score);
+                return;
+            }
+
+            GhostMove();
+            DrawGame();
+            Sleep(200);
+        }
     }
 }
 
-// Oyun alanının çizimi
+void GhostMove() {
+    auto path = AStarSearch(ghostX, ghostY, pacmanX, pacmanY);
+    if (!path.empty() && path.size() > 1) {
+        ghostX = path[1].x;
+        ghostY = path[1].y;
+    }
+}
+
 void DrawGame() {
     CreateImage(gameBoard, 300, 300, ICB_UINT);
     FillRect(gameBoard, 0, 0, 300, 300, 0x000000);
@@ -131,51 +196,10 @@ void DrawGame() {
         }
     }
 
-    // Pacman ve hayalet
     FillCircle(gameBoard, pacmanX * 30 + 15, pacmanY * 30 + 15, 9, 0xffff00);
     FillCircle(gameBoard, ghostX * 30 + 15, ghostY * 30 + 15, 7, 0xff0000);
 
     DisplayImage(FRM1, gameBoard);
-}
-
-// Pacman'in Hareketi
-void PacmanMove(void* lpParam) {
-    while (1) {
-        int key = ICG_LastKeyPressed();
-        int nextX = pacmanX;
-        int nextY = pacmanY;
-
-        if (key == 37) nextX--;
-        else if (key == 39) nextX++;
-        else if (key == 38) nextY--;
-        else if (key == 40) nextY++;
-
-        if (nextX >= 0 && nextX < 10 && nextY >= 0 && nextY < 10 && grid[nextY][nextX] == 0) {
-            pacmanX = nextX;
-            pacmanY = nextY;
-            score -= 1; // Her adımda -1 puan ekler
-
-        }
-        if (food[pacmanY][pacmanX]) {
-            food[pacmanY][pacmanX] = false;
-            score += 5; // Yem yendiğinde 5 puan ekler
-
-        }
-
-        GhostMove();
-        DrawGame();
-
-        if (pacmanX == ghostX && pacmanY == ghostY) {
-            ICG_printf(MLE, "%d", score); //total puan yazılır
-
-            while (1) {
-                // Kullanıcı kapatana kadar bekler
-                Sleep(200);
-            }
-        }
-
-        Sleep(200);
-    }
 }
 
 void ICGUI_Create() {
@@ -186,15 +210,13 @@ void ICGUI_Create() {
 
 void ICGUI_main() {
     InitializeFood();
+    InitializeGhost(); //hayaleti rastgele yerde başlat
+
     FRM1 = ICG_FrameMedium(20, 20, 300, 300);
     BTN = ICG_TButton(335, 50, 100, 50, "START", PacmanMove, NULL);
     ICG_Static(335, 110, 100, 55, "SCORE");
     MLE = ICG_MLEditSunken(335, 150, 100, 50, "", SCROLLBAR_V);
-    ICG_printf(MLE, "%d", score); //başlangıç olarak 0 yazar
+    ICG_printf(MLE, "%d", score); //başlangıçta 0 yazar
 
     DrawGame();
-}
-
-int main() {
-    return 0;
 }
